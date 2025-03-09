@@ -1,3 +1,5 @@
+Please leave a star for upcoming update!!
+
 **Before starting the bot, please run `npm install` to install all necessary dependencies.**  
 If you encounter any issues, feel free to reach out via our [Discord server](https://discord.gg/TSdpyMMfrU).  
 
