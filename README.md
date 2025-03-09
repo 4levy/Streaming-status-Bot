@@ -9,3 +9,7 @@ If you encounter any issues, feel free to reach out via our [Discord server](htt
     <img src="https://api.star-history.com/svg?repos=4levy/Streaming-status-Bot&type=Date&theme=dark"">
   </a>
 </p>
+
+<hr>
+
+![b686eca2ccd5c990e2b078d654e674b6](https://github.com/user-attachments/assets/72289d13-db47-4c78-810f-4f1cf89439fb)
