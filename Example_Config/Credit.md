@@ -1,4 +1,4 @@
-## THESE CONFIG CREDIT TO THE SERVER LOYBUNG SUPPORT | https://discord.gg/XDPfrU4E9G
+## THESE CONFIGURATIONS ARE CREDITED TO LOYBUNG SUPPORT | [Join Here](https://discord.gg/XDPfrU4E9G)  
 
-[ ! ] JOIN THEIR SERVER FOR MORE CONFIG
-[ ! ] ALL THE CONFIG CREATOR GOES TO THERE CREDIT
+📌 **Join their server for more configurations!**  
+📌 **All credits for the configurations go to their respective creators.**  
