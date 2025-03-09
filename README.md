@@ -1,7 +1,7 @@
-**Before starting the bot, please run `npm install` to install the necessary dependencies.  
-If you encounter any issues, feel free to contact me via our Discord server.**
+**Before starting the bot, please run `npm install` to install all necessary dependencies.**  
+If you encounter any issues, feel free to reach out via our [Discord server](https://discord.gg/TSdpyMMfrU).  
 
-- https://discord.gg/TSdpyMMfrU 
+🔹 **This project is released under the MIT License.**  
 
 <hr>
 <p align="center">
