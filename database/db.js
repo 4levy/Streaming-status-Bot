@@ -30,7 +30,6 @@ class Database {
     }
   }
 
-  // Add or update user token with duplicate check
   setUserToken(userId, username, token) {
     if (!this.data.users[userId]) {
       this.data.users[userId] = {
@@ -39,7 +38,6 @@ class Database {
       };
     }
 
-    // Check if token already exists for this user
     const tokenExists = this.data.users[userId].tokens.some(
       (t) => t.value === token
     );
