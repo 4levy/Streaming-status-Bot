@@ -1,5 +1,5 @@
-**"Before starting the bot, please run `npm install` to install the necessary dependencies.  
-If you encounter any issues, feel free to contact me via our Discord server."**  
+**Before starting the bot, please run `npm install` to install the necessary dependencies.  
+If you encounter any issues, feel free to contact me via our Discord server.**
 
 - https://discord.gg/TSdpyMMfrU 
 
