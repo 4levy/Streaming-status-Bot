@@ -32,8 +32,8 @@ const client = new Client({
   partials: [Partials.Channel],
   sweepers: {
     messages: {
-      interval: 120,
-      lifetime: 60, 
+      interval: 120, // 2 minutes
+      lifetime: 60, // 1 minute
     },
   },
 });
@@ -59,11 +59,13 @@ for (const file of commandFiles) {
   }
 }
 
+// Event handling
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}!`);
 
   client.user.setActivity("You", { type: 3 });
 
+  // Restore active streams
   try {
     const activeUsers = activeStreamsManager.getActiveUsers();
     console.log(`Restoring streams for ${activeUsers.length} users...`);
@@ -448,36 +450,56 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.customId === "view_tokens") {
-    const db = require("./database/db");
-    const tokens = db.getUserTokens(interaction.user.id);
+    try {
+      if (!interaction.isRepliable()) {
+        console.log("Interaction is no longer valid");
+        return;
+      }
 
-    if (tokens.length === 0) {
-      const noTokensEmbed = new EmbedBuilder()
-        .setColor(0xe74c3c)
-        .setDescription("```You don't have any saved tokens yet.```");
+      const db = require("./database/db");
+      const tokens = db.getUserTokens(interaction.user.id);
+
+      if (tokens.length === 0) {
+        const noTokensEmbed = new EmbedBuilder()
+          .setColor(0xe74c3c)
+          .setDescription("```You don't have any saved tokens yet.```");
+
+        await interaction.reply({
+          embeds: [noTokensEmbed],
+          ephemeral: true
+        }).catch(error => {
+          console.error("Error replying to interaction:", error);
+        });
+        return;
+      }
+
+      const tokenListEmbed = new EmbedBuilder()
+        .setColor(0x3498db)
+        .setDescription(`You have ${tokens.length} saved token(s)`);
+
+      tokens.forEach((token, index) => {
+        tokenListEmbed.addFields({
+          name: `Token ${index + 1}`,
+          value: `Added: ${new Date(token.addedAt).toLocaleDateString()}`
+        });
+      });
 
       await interaction.reply({
-        embeds: [noTokensEmbed],
-        ephemeral: true,
+        embeds: [tokenListEmbed],
+        ephemeral: true
+      }).catch(error => {
+        console.error("Error replying with token list:", error);
       });
-      return;
+    } catch (error) {
+      console.error("Error in view_tokens handler:", error);
+
+      if (interaction.isRepliable()) {
+        await interaction.reply({
+          content: "An error occurred while fetching tokens.",
+          ephemeral: true
+        }).catch(console.error);
+      }
     }
-
-    const tokenListEmbed = new EmbedBuilder()
-      .setColor(0x3498db)
-      .setDescription(`You have ${tokens.length} saved token(s)`);
-
-    tokens.forEach((token, index) => {
-      tokenListEmbed.addFields({
-        name: `Token ${index + 1}`,
-        value: `Added: ${new Date(token.addedAt).toLocaleDateString()}`,
-      });
-    });
-
-    await interaction.reply({
-      embeds: [tokenListEmbed],
-      ephemeral: true,
-    });
   }
 
   if (interaction.customId === "remove_token") {
