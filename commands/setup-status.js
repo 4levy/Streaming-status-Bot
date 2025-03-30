@@ -36,7 +36,7 @@ module.exports = {
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setLabel('Video')
-        .setURL('https://discord.js.org')
+        .setURL('https://youtu.be/ulUS2mXUqKQ')
         .setEmoji('<:youtube:1153998429274517524>')
         .setStyle(ButtonStyle.Link)
       
@@ -56,6 +56,9 @@ module.exports = {
           value: "```กำหนดค่าการตั้งค่าสถานะของคุณ```",
           inline: true,
         }
+      )
+      .setImage(
+        "https://i.ibb.co/8Mhm24D/miyako1-1.gif"
       )
       .setTimestamp();
 
