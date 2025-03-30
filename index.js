@@ -23,6 +23,37 @@ const streamManager = require("./utils/streamManager");
 const TokenValidator = require("./utils/tokenValidator");
 const activeStreamsManager = require("./database/activeStreams");
 
+let chalk;
+try {
+  chalk = require('chalk');
+  if (typeof chalk.cyan !== 'function') {
+    chalk = {
+      green: (text) => `\x1b[32m${text}\x1b[0m`,
+      yellow: (text) => `\x1b[33m${text}\x1b[0m`,
+      red: (text) => `\x1b[31m${text}\x1b[0m`,
+      blue: (text) => `\x1b[34m${text}\x1b[0m`,
+      magenta: (text) => `\x1b[35m${text}\x1b[0m`,
+      cyan: (text) => `\x1b[36m${text}\x1b[0m`
+    };
+  }
+} catch (error) {
+  chalk = {
+    green: (text) => `\x1b[32m${text}\x1b[0m`,
+    yellow: (text) => `\x1b[33m${text}\x1b[0m`,
+    red: (text) => `\x1b[31m${text}\x1b[0m`,
+    blue: (text) => `\x1b[34m${text}\x1b[0m`,
+    magenta: (text) => `\x1b[35m${text}\x1b[0m`,
+    cyan: (text) => `\x1b[36m${text}\x1b[0m`
+  };
+}
+
+function createBanner(text) {
+  const length = text.length + 4;
+  const line = '='.repeat(length);
+  return `\n${line}\n  ${text}  \n${line}\n`;
+}
+
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -59,39 +90,70 @@ for (const file of commandFiles) {
   }
 }
 
-// Event handling
 client.once("ready", async () => {
-  console.log(`Logged in as ${client.user.tag}!`);
-
+  console.log(chalk.cyan(createBanner(`BOT ONLINE: ${client.user.tag}`)));
+  
   client.user.setActivity("You", { type: 3 });
-
-  // Restore active streams
+  console.log(chalk.green('✓ Activity status set to "Watching You"\n'));
+  
+  console.log(chalk.magenta('=== RESTORING ACTIVE STREAMS ==='));
+  
   try {
+    const db = require("./database/db");
+    const configManager = require("./database/userConfig");
     const activeUsers = activeStreamsManager.getActiveUsers();
-    console.log(`Restoring streams for ${activeUsers.length} users...`);
-
-    for (const userId of activeUsers) {
-      const db = require("./database/db");
-      const configManager = require("./database/userConfig");
-      const userTokens = db.getUserTokens(userId);
-      const userConfig = configManager.getUserConfig(userId);
-
-      if (userTokens && userTokens.length > 0 && userConfig) {
-        console.log(`Restoring stream for user ${userId}`);
-        await streamManager.startStream(userId, userTokens, userConfig);
-        streamManager.startStatusCheck(userId);
-      } else {
-        console.log(
-          `Cannot restore stream for user ${userId}: missing tokens or config`
-        );
-        activeStreamsManager.removeUser(userId);
+    
+    if (activeUsers.length === 0) {
+      console.log(chalk.yellow('⚠ No active streams to restore'));
+    } else {
+      console.log(chalk.blue(`ℹ Found ${chalk.yellow(activeUsers.length)} active user(s) to restore`));
+      
+      let restored = 0;
+      let failed = 0;
+      
+      for (const userId of activeUsers) {
+        const userTokens = db.getUserTokens(userId);
+        const userConfig = configManager.getUserConfig(userId);
+        
+        process.stdout.write(chalk.yellow(`⟳ Restoring stream for user ${userId}... `));
+        
+        if (userTokens && userTokens.length > 0 && userConfig) {
+          try {
+            await streamManager.startStream(userId, userTokens, userConfig);
+            streamManager.startStatusCheck(userId);
+            console.log(chalk.green('SUCCESS'));
+            restored++;
+          } catch (err) {
+            console.log(chalk.red('FAILED'));
+            console.log(chalk.red(`  Error: ${err.message}`));
+            activeStreamsManager.removeUser(userId);
+            failed++;
+          }
+        } else {
+          console.log(chalk.red('FAILED'));
+          console.log(chalk.red('  Missing tokens or config'));
+          activeStreamsManager.removeUser(userId);
+          failed++;
+        }
       }
+      
+      console.log('\n' + chalk.blue('Stream Restoration Summary:'));
+      console.log(chalk.green(`✓ Successfully restored: ${restored}`));
+      console.log(chalk.red(`✗ Failed to restore: ${failed}`));
     }
   } catch (error) {
-    console.error("Error restoring streams:", error);
+    console.log(chalk.red(`\n✗ CRITICAL ERROR while restoring streams:`));
+    console.log(chalk.red(`  ${error.message}`));
   }
-
-  registerCommands();
+  
+  console.log('\n' + chalk.cyan('=== REGISTERING COMMANDS ==='));
+  
+  try {
+    await registerCommands();
+    console.log(chalk.green('✓ Commands registered successfully'));
+  } catch (error) {
+    console.log(chalk.red(`✗ Failed to register commands: ${error.message}`));
+  }
 });
 
 client.on("interactionCreate", async (interaction) => {
@@ -152,21 +214,21 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.customId === "start_streaming") {
     try {
       await interaction.deferUpdate();
-  
+
       const processingEmbed = new EmbedBuilder()
         .setColor(0xf1c40f)
         .setDescription("```⏳ Starting streaming status...```");
 
       await interaction.editReply({
         embeds: [processingEmbed],
-        components: [] 
+        components: [],
       });
-  
+
       const db = require("./database/db");
       const configManager = require("./database/userConfig");
       const userTokens = db.getUserTokens(interaction.user.id);
       const userConfig = configManager.getUserConfig(interaction.user.id);
-  
+
       if (!userConfig) {
         const configErrorEmbed = new EmbedBuilder()
           .setColor(0xe74c3c)
@@ -176,12 +238,13 @@ client.on("interactionCreate", async (interaction) => {
           )
           .addFields({
             name: "How to Configure",
-            value: "Click the 'Config' button to set up your streaming configuration.",
+            value:
+              "Click the 'Config' button to set up your streaming configuration.",
           })
           .setFooter({
             text: "Configuration is required before streaming can start",
           });
-  
+
         await interaction.editReply({
           embeds: [configErrorEmbed],
           components: [interaction.message.components[0]],
@@ -236,7 +299,7 @@ client.on("interactionCreate", async (interaction) => {
 
       if (result.success) {
         activeStreamsManager.addUser(interaction.user.id);
-  
+
         const updatedRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId("start_streaming")
@@ -255,8 +318,8 @@ client.on("interactionCreate", async (interaction) => {
         );
 
         const startEmbed = new EmbedBuilder()
-        .setColor(0x2ecc71)
-        .setDescription("```Your streaming status is now active!```");
+          .setColor(0x2ecc71)
+          .setDescription("```Your streaming status is now active!```");
 
         const fields = [
           { name: "Status", value: "Active", inline: true },
@@ -304,9 +367,9 @@ client.on("interactionCreate", async (interaction) => {
 
         await interaction.editReply({
           embeds: [startEmbed],
-          components: [updatedRow]
+          components: [updatedRow],
         });
-        
+
         streamManager.startStatusCheck(interaction.user.id);
       } else {
         const errorEmbed = new EmbedBuilder()
@@ -325,26 +388,26 @@ client.on("interactionCreate", async (interaction) => {
           embeds: [errorEmbed],
         });
       }
-  } catch (error) {
-    console.error("Error starting stream:", error);
-    
-    await interaction.editReply({
-      content: `❌ Error starting stream: ${error.message}`,
-      components: [interaction.message.components[0]]
-    });
+    } catch (error) {
+      console.error("Error starting stream:", error);
+
+      await interaction.editReply({
+        content: `❌ Error starting stream: ${error.message}`,
+        components: [interaction.message.components[0]],
+      });
+    }
   }
-}
 
   if (interaction.customId === "stop_streaming") {
     try {
       await interaction.deferUpdate();
-  
+
       const success = await streamManager.stopStream(interaction.user.id);
-  
+
       if (success) {
         activeStreamsManager.removeUser(interaction.user.id);
       }
-  
+
       const updatedRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("start_streaming")
@@ -362,34 +425,34 @@ client.on("interactionCreate", async (interaction) => {
           .setStyle(ButtonStyle.Primary)
       );
 
-    const stopEmbed = new EmbedBuilder()
-      .setColor(0xe74c3c)
-      .setDescription(
-        success
-          ? "```Your streaming status has been deactivated.```"
-          : "```No active streaming session found.```"
-      )
-      .addFields({
-        name: "Status",
-        value: success ? "Inactive" : "```Already Inactive```",
-        inline: true,
-      })
-      .setTimestamp();
+      const stopEmbed = new EmbedBuilder()
+        .setColor(0xe74c3c)
+        .setDescription(
+          success
+            ? "```Your streaming status has been deactivated.```"
+            : "```No active streaming session found.```"
+        )
+        .addFields({
+          name: "Status",
+          value: success ? "Inactive" : "```Already Inactive```",
+          inline: true,
+        })
+        .setTimestamp();
 
-    await interaction.editReply({
-      embeds: [stopEmbed],
-      components: [updatedRow],
-    });
+      await interaction.editReply({
+        embeds: [stopEmbed],
+        components: [updatedRow],
+      });
 
-    streamManager.stopStatusCheck(interaction.user.id);
-  } catch (error) {
-    console.error("Error stopping stream:", error);
-    await interaction.editReply({
-      content: "❌ Error stopping the stream.",
-      components: [interaction.message.components[0]],
-    });
+      streamManager.stopStatusCheck(interaction.user.id);
+    } catch (error) {
+      console.error("Error stopping stream:", error);
+      await interaction.editReply({
+        content: "❌ Error stopping the stream.",
+        components: [interaction.message.components[0]],
+      });
+    }
   }
-}
 
   if (interaction.customId === "config_streaming") {
     const configEmbed = new EmbedBuilder().setColor(0x3498db).addFields({
@@ -464,12 +527,14 @@ client.on("interactionCreate", async (interaction) => {
           .setColor(0xe74c3c)
           .setDescription("```You don't have any saved tokens yet.```");
 
-        await interaction.reply({
-          embeds: [noTokensEmbed],
-          ephemeral: true
-        }).catch(error => {
-          console.error("Error replying to interaction:", error);
-        });
+        await interaction
+          .reply({
+            embeds: [noTokensEmbed],
+            ephemeral: true,
+          })
+          .catch((error) => {
+            console.error("Error replying to interaction:", error);
+          });
         return;
       }
 
@@ -480,24 +545,28 @@ client.on("interactionCreate", async (interaction) => {
       tokens.forEach((token, index) => {
         tokenListEmbed.addFields({
           name: `Token ${index + 1}`,
-          value: `Added: ${new Date(token.addedAt).toLocaleDateString()}`
+          value: `Added: ${new Date(token.addedAt).toLocaleDateString()}`,
         });
       });
 
-      await interaction.reply({
-        embeds: [tokenListEmbed],
-        ephemeral: true
-      }).catch(error => {
-        console.error("Error replying with token list:", error);
-      });
+      await interaction
+        .reply({
+          embeds: [tokenListEmbed],
+          ephemeral: true,
+        })
+        .catch((error) => {
+          console.error("Error replying with token list:", error);
+        });
     } catch (error) {
       console.error("Error in view_tokens handler:", error);
 
       if (interaction.isRepliable()) {
-        await interaction.reply({
-          content: "An error occurred while fetching tokens.",
-          ephemeral: true
-        }).catch(console.error);
+        await interaction
+          .reply({
+            content: "An error occurred while fetching tokens.",
+            ephemeral: true,
+          })
+          .catch(console.error);
       }
     }
   }
