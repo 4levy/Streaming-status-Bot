@@ -25,15 +25,15 @@ const activeStreamsManager = require("./database/activeStreams");
 
 let chalk;
 try {
-  chalk = require('chalk');
-  if (typeof chalk.cyan !== 'function') {
+  chalk = require("chalk");
+  if (typeof chalk.cyan !== "function") {
     chalk = {
       green: (text) => `\x1b[32m${text}\x1b[0m`,
-      yellow: (text) => `\x1b[33m${text}\x1b[0m`,
+      yellow: (text) => `\x1b[33m${text}\wx1b[0m`,
       red: (text) => `\x1b[31m${text}\x1b[0m`,
       blue: (text) => `\x1b[34m${text}\x1b[0m`,
       magenta: (text) => `\x1b[35m${text}\x1b[0m`,
-      cyan: (text) => `\x1b[36m${text}\x1b[0m`
+      cyan: (text) => `\x1b[36m${text}\x1b[0m`,
     };
   }
 } catch (error) {
@@ -43,16 +43,15 @@ try {
     red: (text) => `\x1b[31m${text}\x1b[0m`,
     blue: (text) => `\x1b[34m${text}\x1b[0m`,
     magenta: (text) => `\x1b[35m${text}\x1b[0m`,
-    cyan: (text) => `\x1b[36m${text}\x1b[0m`
+    cyan: (text) => `\x1b[36m${text}\x1b[0m`,
   };
 }
 
 function createBanner(text) {
   const length = text.length + 4;
-  const line = '='.repeat(length);
+  const line = "=".repeat(length);
   return `\n${line}\n  ${text}  \n${line}\n`;
 }
-
 
 const client = new Client({
   intents: [
@@ -63,8 +62,8 @@ const client = new Client({
   partials: [Partials.Channel],
   sweepers: {
     messages: {
-      interval: 120, // 2 minutes
-      lifetime: 60, // 1 minute
+      interval: 120,
+      lifetime: 60,
     },
   },
 });
@@ -92,52 +91,60 @@ for (const file of commandFiles) {
 
 client.once("ready", async () => {
   console.log(chalk.cyan(createBanner(`BOT ONLINE: ${client.user.tag}`)));
-  
+
   client.user.setActivity("You", { type: 3 });
   console.log(chalk.green('✓ Activity status set to "Watching You"\n'));
-  
-  console.log(chalk.magenta('=== RESTORING ACTIVE STREAMS ==='));
-  
+
+  console.log(chalk.magenta("=== RESTORING ACTIVE STREAMS ==="));
+
   try {
     const db = require("./database/db");
     const configManager = require("./database/userConfig");
     const activeUsers = activeStreamsManager.getActiveUsers();
-    
+
     if (activeUsers.length === 0) {
-      console.log(chalk.yellow('⚠ No active streams to restore'));
+      console.log(chalk.yellow("⚠ No active streams to restore"));
     } else {
-      console.log(chalk.blue(`ℹ Found ${chalk.yellow(activeUsers.length)} active user(s) to restore`));
-      
+      console.log(
+        chalk.blue(
+          `ℹ Found ${chalk.yellow(
+            activeUsers.length
+          )} active user(s) to restore`
+        )
+      );
+
       let restored = 0;
       let failed = 0;
-      
+
       for (const userId of activeUsers) {
         const userTokens = db.getUserTokens(userId);
         const userConfig = configManager.getUserConfig(userId);
-        
-        process.stdout.write(chalk.yellow(`⟳ Restoring stream for user ${userId}... `));
-        
+
+        process.stdout.write(
+          chalk.yellow(`⟳ Restoring stream for user ${userId}... `)
+        );
+
         if (userTokens && userTokens.length > 0 && userConfig) {
           try {
             await streamManager.startStream(userId, userTokens, userConfig);
             streamManager.startStatusCheck(userId);
-            console.log(chalk.green('SUCCESS'));
+            console.log(chalk.green("SUCCESS"));
             restored++;
           } catch (err) {
-            console.log(chalk.red('FAILED'));
+            console.log(chalk.red("FAILED"));
             console.log(chalk.red(`  Error: ${err.message}`));
             activeStreamsManager.removeUser(userId);
             failed++;
           }
         } else {
-          console.log(chalk.red('FAILED'));
-          console.log(chalk.red('  Missing tokens or config'));
+          console.log(chalk.red("FAILED"));
+          console.log(chalk.red("  Missing tokens or config"));
           activeStreamsManager.removeUser(userId);
           failed++;
         }
       }
-      
-      console.log('\n' + chalk.blue('Stream Restoration Summary:'));
+
+      console.log("\n" + chalk.blue("Stream Restoration Summary:"));
       console.log(chalk.green(`✓ Successfully restored: ${restored}`));
       console.log(chalk.red(`✗ Failed to restore: ${failed}`));
     }
@@ -145,12 +152,12 @@ client.once("ready", async () => {
     console.log(chalk.red(`\n✗ CRITICAL ERROR while restoring streams:`));
     console.log(chalk.red(`  ${error.message}`));
   }
-  
-  console.log('\n' + chalk.cyan('=== REGISTERING COMMANDS ==='));
-  
+
+  console.log("\n" + chalk.cyan("=== REGISTERING COMMANDS ==="));
+
   try {
     await registerCommands();
-    console.log(chalk.green('✓ Commands registered successfully'));
+    console.log(chalk.green("✓ Commands registered successfully"));
   } catch (error) {
     console.log(chalk.red(`✗ Failed to register commands: ${error.message}`));
   }
@@ -520,9 +527,9 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       const db = require("./database/db");
-      const tokens = db.getUserTokens(interaction.user.id);
+      const userData = db.data.users[interaction.user.id];
 
-      if (tokens.length === 0) {
+      if (!userData || userData.tokens.length === 0) {
         const noTokensEmbed = new EmbedBuilder()
           .setColor(0xe74c3c)
           .setDescription("```You don't have any saved tokens yet.```");
@@ -538,36 +545,33 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      const tokenListEmbed = new EmbedBuilder()
-        .setColor(0x3498db)
-        .setDescription(`You have ${tokens.length} saved token(s)`);
+      const tokenList = userData.tokens
+        .map((t, index) => {
+          const username = t.username || "Unknown User";
+          const status =
+            t.fetchSuccess === false ? " (Token may be invalid)" : "";
+          return `**${index + 1}.** \`${username}\`${status} (Added: ${new Date(
+            t.addedAt
+          ).toLocaleString()})`;
+        })
+        .join("\n");
 
-      tokens.forEach((token, index) => {
-        tokenListEmbed.addFields({
-          name: `Token ${index + 1}`,
-          value: `Added: ${new Date(token.addedAt).toLocaleDateString()}`,
-        });
-      });
+      const tokensEmbed = new EmbedBuilder()
+        .setColor(0xfcf7f7)
+        .setTitle(`${interaction.user.username} db`)
+        .setDescription(tokenList)
+        .setFooter({ text: `Total tokens: ${userData.tokens.length}` });
 
       await interaction
         .reply({
-          embeds: [tokenListEmbed],
+          embeds: [tokensEmbed],
           ephemeral: true,
         })
         .catch((error) => {
-          console.error("Error replying with token list:", error);
+          console.error("Error replying to interaction:", error);
         });
     } catch (error) {
-      console.error("Error in view_tokens handler:", error);
-
-      if (interaction.isRepliable()) {
-        await interaction
-          .reply({
-            content: "An error occurred while fetching tokens.",
-            ephemeral: true,
-          })
-          .catch(console.error);
-      }
+      console.error("Error handling interaction:", error);
     }
   }
 
@@ -589,7 +593,7 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       const options = tokens.map((token, index) => ({
-        label: `Token ${index + 1}`,
+        label: token.username || `Token ${index + 1}`,
         description: `Added: ${new Date(token.addedAt).toLocaleDateString()}`,
         value: token.value,
       }));
@@ -644,10 +648,9 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       const configEmbed = new EmbedBuilder()
-        .setColor(0x3498db)
-        .setTitle("Sample Configuration")
+        .setColor(0xf0e9e9)
         .setDescription(
-          "Copy this configuration and modify it for your needs:"
+          "```Copy this configuration and modify it for your needs:```"
         );
 
       if (formattedConfig.length > 1000) {
@@ -799,11 +802,7 @@ client.on("interactionCreate", async (interaction) => {
           const isValid = await validateSelfbotToken(token);
 
           if (isValid) {
-            const success = db.setUserToken(
-              interaction.user.id,
-              interaction.user.tag,
-              token
-            );
+            const success = await db.setUserToken(interaction.user.id, token);
 
             if (success) {
               validCount++;

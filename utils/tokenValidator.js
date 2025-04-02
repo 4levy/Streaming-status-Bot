@@ -4,7 +4,7 @@ class TokenValidator {
   static async validateToken(token) {
     try {
       token = token.trim();
-      if (!token || typeof token !== 'string') return false;
+      if (!token || typeof token !== "string") return false;
 
       if (!token.match(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)) {
         return false;
@@ -13,15 +13,15 @@ class TokenValidator {
       const response = await fetch("https://discord.com/api/v9/users/@me", {
         method: "GET",
         headers: {
-          Authorization: token.replace(/[^\x20-\x7E]/g, ''), 
+          Authorization: token.replace(/[^\x20-\x7E]/g, ""),
           "Content-Type": "application/json",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
       });
 
       if (response.ok) {
         const data = await response.json();
-        console.log("Token validation successful for:", data.username);
         return true;
       }
 

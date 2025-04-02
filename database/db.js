@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const TokenValidator = require("../utils/tokenValidator");
 
 class Database {
   constructor() {
@@ -30,10 +31,9 @@ class Database {
     }
   }
 
-  setUserToken(userId, username, token) {
+  async setUserToken(userId, token) {
     if (!this.data.users[userId]) {
       this.data.users[userId] = {
-        username: username,
         tokens: [],
       };
     }
@@ -47,8 +47,56 @@ class Database {
       return false;
     }
 
+    let username = null;
+    let avatarUrl = null;
+    let fetchSuccess = false;
+
+    try {
+      const isValid = await TokenValidator.validateToken(token);
+      if (isValid) {
+        const cleanToken = token.replace(/[^\x20-\x7E]/g, "");
+        const response = await fetch("https://discord.com/api/v9/users/@me", {
+          method: "GET",
+          headers: {
+            Authorization: cleanToken,
+            "Content-Type": "application/json",
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          username = data.username || "Unknown User";
+          avatarUrl = data.avatar
+            ? `https://cdn.discordapp.com/avatars/${data.id}/${data.avatar}.png`
+            : null;
+          fetchSuccess = true;
+          console.log(`Successfully fetched username for token: ${username}`);
+        } else {
+          console.error(`Failed to fetch username, status: ${response.status}`);
+          try {
+            const errorData = await response.json();
+            console.error("Error details:", JSON.stringify(errorData));
+          } catch (e) {
+          }
+        }
+      } else {
+        console.error("Token validation failed");
+      }
+    } catch (error) {
+      console.error("Error during token validation or API fetch:", error);
+    }
+
+    if (!username) {
+      username = fetchSuccess ? "Discord User" : "Unknown User";
+    }
+
     this.data.users[userId].tokens.push({
       value: token,
+      username,
+      avatarUrl,
+      fetchSuccess,
       addedAt: new Date().toISOString(),
     });
 
