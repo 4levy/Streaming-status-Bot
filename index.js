@@ -23,17 +23,26 @@ const streamManager = require("./utils/streamManager");
 const TokenValidator = require("./utils/tokenValidator");
 const activeStreamsManager = require("./database/activeStreams");
 
+const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
+
 let chalk;
 try {
   chalk = require("chalk");
   if (typeof chalk.cyan !== "function") {
     chalk = {
       green: (text) => `\x1b[32m${text}\x1b[0m`,
-      yellow: (text) => `\x1b[33m${text}\wx1b[0m`,
+      yellow: (text) => `\x1b[33m${text}\x1b[0m`,
       red: (text) => `\x1b[31m${text}\x1b[0m`,
       blue: (text) => `\x1b[34m${text}\x1b[0m`,
       magenta: (text) => `\x1b[35m${text}\x1b[0m`,
       cyan: (text) => `\x1b[36m${text}\x1b[0m`,
+      white: (text) => `\x1b[37m${text}\x1b[0m`,
+      gray: (text) => `\x1b[90m${text}\x1b[0m`,
+      bold: (text) => `\x1b[1m${text}\x1b[0m`,
+      dim: (text) => `\x1b[2m${text}\x1b[0m`,
+      italic: (text) => `\x1b[3m${text}\x1b[0m`,
+      underline: (text) => `\x1b[4m${text}\x1b[0m`,
+      reset: (text) => `\x1b[0m${text}\x1b[0m`,
     };
   }
 } catch (error) {
@@ -44,13 +53,126 @@ try {
     blue: (text) => `\x1b[34m${text}\x1b[0m`,
     magenta: (text) => `\x1b[35m${text}\x1b[0m`,
     cyan: (text) => `\x1b[36m${text}\x1b[0m`,
+    white: (text) => `\x1b[37m${text}\x1b[0m`,
+    gray: (text) => `\x1b[90m${text}\x1b[0m`,
+    bold: (text) => `\x1b[1m${text}\x1b[0m`,
+    dim: (text) => `\x1b[2m${text}\x1b[0m`,
+    italic: (text) => `\x1b[3m${text}\x1b[0m`,
+    underline: (text) => `\x1b[4m${text}\x1b[0m`,
+    reset: (text) => `\x1b[0m${text}\x1b[0m`,
   };
 }
 
-function createBanner(text) {
-  const length = text.length + 4;
-  const line = "=".repeat(length);
-  return `\n${line}\n  ${text}  \n${line}\n`;
+const commands = [];
+const commandsPath = path.join(__dirname, "commands");
+const commandFiles = fs
+  .readdirSync(commandsPath)
+  .filter((file) => file.endsWith(".js"));
+
+for (const file of commandFiles) {
+  const filePath = path.join(commandsPath, file);
+  const command = require(filePath);
+
+  if ("data" in command && "execute" in command) {
+    commands.push(command.data.toJSON());
+  } else {
+    console.log(
+      chalk.yellow(
+        `[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`
+      )
+    );
+  }
+}
+
+function createBanner(text, type = "info") {
+  const width = 60;
+  const padding = Math.floor((width - text.length) / 2);
+  const line = "─".repeat(width);
+
+  let color;
+  switch (type) {
+    case "success":
+      color = chalk.green;
+      break;
+    case "error":
+      color = chalk.red;
+      break;
+    case "warning":
+      color = chalk.yellow;
+      break;
+    case "info":
+    default:
+      color = chalk.cyan;
+  }
+
+  return `\n${color("┌" + line + "┐")}\n${color("│")}${" ".repeat(
+    padding
+  )}${chalk.bold(text)}${" ".repeat(width - padding - text.length - 1)}${color(
+    "│"
+  )}\n${color("└" + line + "┘")}\n`;
+}
+
+function createStatusBox(title, content, type = "info") {
+  const width = 60;
+  const line = "─".repeat(width - 2);
+
+  let titleColor, contentColor;
+  switch (type) {
+    case "success":
+      titleColor = chalk.green;
+      contentColor = chalk.white;
+      break;
+    case "error":
+      titleColor = chalk.red;
+      contentColor = chalk.white;
+      break;
+    case "warning":
+      titleColor = chalk.yellow;
+      contentColor = chalk.white;
+      break;
+    case "info":
+    default:
+      titleColor = chalk.cyan;
+      contentColor = chalk.white;
+  }
+
+  const titlePadding = Math.max(0, Math.floor((width - title.length - 3) / 2));
+  const titleRemaining = Math.max(0, width - title.length - titlePadding - 3);
+
+  const contentLines = content.split("\n");
+  let result = `${titleColor("┌" + line + "┐")}\n`;
+  result += `${titleColor("│")}${" ".repeat(titlePadding)} ${chalk.bold(
+    title
+  )} ${" ".repeat(titleRemaining)}${titleColor("│")}\n`;
+  result += `${titleColor("├" + line + "┤")}\n`;
+
+  for (const line of contentLines) {
+    const contentPadding = Math.max(
+      0,
+      Math.floor((width - line.length - 3) / 2)
+    );
+    const contentRemaining = Math.max(
+      0,
+      width - line.length - contentPadding - 3
+    );
+    result += `${titleColor("│")}${" ".repeat(contentPadding)} ${contentColor(
+      line
+    )} ${" ".repeat(contentRemaining)}${titleColor("│")}\n`;
+  }
+
+  result += `${titleColor("└" + line + "┘")}\n`;
+  return result;
+}
+
+function createProgressBar(current, total, width = 40) {
+  const percentage = Math.floor((current / total) * 100);
+  const filled = Math.floor((width * current) / total);
+  const empty = width - filled;
+
+  const bar = "█".repeat(filled) + "░".repeat(empty);
+  return `${chalk.cyan("[")}${chalk.green(bar)}${chalk.cyan("]")} ${chalk.white(
+    `${percentage}%`
+  )}`;
 }
 
 const client = new Client({
@@ -70,93 +192,95 @@ const client = new Client({
 
 client.commands = new Collection();
 
-// Load commands
-const commandsPath = path.join(__dirname, "commands");
-const commandFiles = fs
-  .readdirSync(commandsPath)
-  .filter((file) => file.endsWith(".js"));
-
+// Load commands into Collection
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
   const command = require(filePath);
-
   if ("data" in command && "execute" in command) {
     client.commands.set(command.data.name, command);
   } else {
     console.log(
-      `[WARNING] The command at ${filePath} is missing required properties.`
+      chalk.yellow(
+        `[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`
+      )
     );
   }
 }
 
 client.once("ready", async () => {
-  console.log(chalk.cyan(createBanner(`BOT ONLINE: ${client.user.tag}`)));
+  console.log(createBanner("STREAMING STATUS BOT", "info"));
+  console.log(
+    createStatusBox(
+      "Bot Information",
+      `Logged in as ${chalk.bold(client.user.tag)}`,
+      "info"
+    )
+  );
 
-  client.user.setActivity("You", { type: 3 });
-  console.log(chalk.green('✓ Activity status set to "Watching You"\n'));
+  client.user.setPresence({
+    activities: [
+      {
+        name: "Your RPC",
+        type: 1,
+        url: "https://www.twitch.tv/4levy_z1",
+      },
+    ],
+    status: "online",
+    afk: false,
+  });
 
-  console.log(chalk.magenta("=== RESTORING ACTIVE STREAMS ==="));
+  console.log(createBanner("RESTORING ACTIVE STREAMS", "info"));
+  const activeUsers = activeStreamsManager.getActiveUsers();
+  console.log(
+    chalk.gray(`ℹ Found ${activeUsers.length} active user(s) to restore`)
+  );
 
-  try {
-    const db = require("./database/db");
-    const configManager = require("./database/userConfig");
-    const activeUsers = activeStreamsManager.getActiveUsers();
+  let successCount = 0;
+  let failCount = 0;
 
-    if (activeUsers.length === 0) {
-      console.log(chalk.yellow("⚠ No active streams to restore"));
-    } else {
-      console.log(
-        chalk.blue(
-          `ℹ Found ${chalk.yellow(
-            activeUsers.length
-          )} active user(s) to restore`
-        )
-      );
+  for (const userId of activeUsers) {
+    try {
+      console.log(chalk.cyan(`⟳ Restoring stream for user ${userId}...`));
 
-      let restored = 0;
-      let failed = 0;
+      const db = require("./database/db");
+      const configManager = require("./database/userConfig");
+      const userTokens = db.getUserTokens(userId);
+      const userConfig = configManager.getUserConfig(userId);
 
-      for (const userId of activeUsers) {
-        const userTokens = db.getUserTokens(userId);
-        const userConfig = configManager.getUserConfig(userId);
-
-        process.stdout.write(
-          chalk.yellow(`⟳ Restoring stream for user ${userId}... `)
+      if (userTokens && userTokens.length > 0 && userConfig) {
+        await streamManager.startStream(userId, userTokens, userConfig);
+        streamManager.startStatusCheck(userId);
+        console.log(chalk.green("✓ Successfully restored stream"));
+        successCount++;
+      } else {
+        console.log(
+          chalk.red("✗ Failed to restore stream: Missing tokens or config")
         );
-
-        if (userTokens && userTokens.length > 0 && userConfig) {
-          try {
-            await streamManager.startStream(userId, userTokens, userConfig);
-            streamManager.startStatusCheck(userId);
-            console.log(chalk.green("SUCCESS"));
-            restored++;
-          } catch (err) {
-            console.log(chalk.red("FAILED"));
-            console.log(chalk.red(`  Error: ${err.message}`));
-            activeStreamsManager.removeUser(userId);
-            failed++;
-          }
-        } else {
-          console.log(chalk.red("FAILED"));
-          console.log(chalk.red("  Missing tokens or config"));
-          activeStreamsManager.removeUser(userId);
-          failed++;
-        }
+        activeStreamsManager.removeUser(userId);
+        failCount++;
       }
-
-      console.log("\n" + chalk.blue("Stream Restoration Summary:"));
-      console.log(chalk.green(`✓ Successfully restored: ${restored}`));
-      console.log(chalk.red(`✗ Failed to restore: ${failed}`));
+    } catch (error) {
+      console.log(chalk.red(`✗ Failed to restore stream: ${error.message}`));
+      activeStreamsManager.removeUser(userId);
+      failCount++;
     }
-  } catch (error) {
-    console.log(chalk.red(`\n✗ CRITICAL ERROR while restoring streams:`));
-    console.log(chalk.red(`  ${error.message}`));
   }
 
-  console.log("\n" + chalk.cyan("=== REGISTERING COMMANDS ==="));
+  console.log(
+    createStatusBox(
+      "Stream Restoration Summary",
+      `✓ Successfully restored: ${chalk.green(
+        successCount
+      )}\n✗ Failed to restore: ${chalk.red(failCount)}`,
+      successCount > 0 ? "success" : "error"
+    )
+  );
 
   try {
-    await registerCommands();
+    console.log(chalk.cyan("Started refreshing application (/) commands."));
+    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), {
+      body: commands,
+    });
     console.log(chalk.green("✓ Commands registered successfully"));
   } catch (error) {
     console.log(chalk.red(`✗ Failed to register commands: ${error.message}`));
@@ -462,13 +586,38 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.customId === "config_streaming") {
-    const configEmbed = new EmbedBuilder().setColor(0x3498db).addFields({
-      name: "1. Upload Config File",
-      value: "Use `/upload-config` to upload your .json file",
-    });
+    const configEmbed = new EmbedBuilder()
+      .setColor(0xf3eeee)
+      .setDescription(
+        "```Choose how you want to configure your streaming status```"
+      )
+      .addFields(
+        {
+          name: "1. Manual Configuration",
+          value: "Configure your settings step by step using Discord buttons",
+          inline: true,
+        },
+        {
+          name: "2. Upload Config File",
+          value: "Use `/upload-config` to upload your .json file",
+          inline: true,
+        }
+      );
+
+    const configRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("manual_config")
+        .setLabel("Manual Configuration")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("show_sample_config")
+        .setLabel("View Sample Config")
+        .setStyle(ButtonStyle.Secondary)
+    );
 
     await interaction.reply({
       embeds: [configEmbed],
+      components: [configRow],
       ephemeral: true,
     });
   }
@@ -727,6 +876,343 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
   }
+
+  if (interaction.customId === "manual_config") {
+    const configManager = require("./database/userConfig");
+    const userConfig = configManager.getUserConfig(interaction.user.id);
+
+    const configEmbed = new EmbedBuilder()
+      .setColor(0xf1eded)
+      .setDescription("```Select a section to configure```")
+      .addFields(
+        {
+          name: "1. Basic Settings",
+          value: "City and delay settings",
+          inline: true,
+        },
+        {
+          name: "2. Watch URLs",
+          value: "Twitch, YouTube, and other URLs",
+          inline: true,
+        },
+        {
+          name: "3. Status Messages",
+          value: "Customize your status text",
+          inline: true,
+        },
+        {
+          name: "4. Images",
+          value: "Add large and small images",
+          inline: true,
+        },
+        { name: "5. Buttons", value: "Configure button links", inline: true }
+      );
+
+    const configRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("config_basic")
+        .setLabel("Basic Settings")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("config_urls")
+        .setLabel("Watch URLs")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("config_messages")
+        .setLabel("Status Messages")
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    const configRow2 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("config_images")
+        .setLabel("Images")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("config_buttons")
+        .setLabel("Buttons")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("save_config")
+        .setLabel("Save Configuration")
+        .setStyle(ButtonStyle.Success)
+    );
+
+    await interaction.reply({
+      embeds: [configEmbed],
+      components: [configRow, configRow2],
+      ephemeral: true,
+    });
+  }
+
+  if (interaction.customId === "config_basic") {
+    const configManager = require("./database/userConfig");
+    const userConfig = configManager.getUserConfig(interaction.user.id);
+
+    const modal = new ModalBuilder()
+      .setCustomId("basic_settings_modal")
+      .setTitle("Basic Settings");
+
+    const cityInput = new TextInputBuilder()
+      .setCustomId("city")
+      .setLabel("City")
+      .setPlaceholder("Enter your city (e.g., pattaya)")
+      .setStyle(TextInputStyle.Short)
+      .setValue(userConfig.setup?.city || "pattaya")
+      .setRequired(true);
+
+    const delayInput = new TextInputBuilder()
+      .setCustomId("delay")
+      .setLabel("Delay (seconds)")
+      .setPlaceholder("Enter delay in seconds (e.g., 10)")
+      .setStyle(TextInputStyle.Short)
+      .setValue(String(userConfig.setup?.delay || 10))
+      .setRequired(true);
+
+    const cityRow = new ActionRowBuilder().addComponents(cityInput);
+    const delayRow = new ActionRowBuilder().addComponents(delayInput);
+
+    modal.addComponents(cityRow, delayRow);
+
+    await interaction.showModal(modal);
+  }
+
+  if (interaction.customId === "config_urls") {
+    const configManager = require("./database/userConfig");
+    const userConfig = configManager.getUserConfig(interaction.user.id);
+
+    const modal = new ModalBuilder()
+      .setCustomId("urls_modal")
+      .setTitle("Watch URLs");
+
+    const urlsInput = new TextInputBuilder()
+      .setCustomId("urls")
+      .setLabel("Watch URLs (one per line)")
+      .setPlaceholder(
+        "Enter URLs to watch (e.g., https://www.twitch.tv/username)"
+      )
+      .setStyle(TextInputStyle.Paragraph)
+      .setValue(userConfig.config?.options?.["watch-url"]?.join("\n") || "")
+      .setRequired(true);
+
+    const urlsRow = new ActionRowBuilder().addComponents(urlsInput);
+
+    modal.addComponents(urlsRow);
+
+    await interaction.showModal(modal);
+  }
+
+  if (interaction.customId === "config_messages") {
+    const configManager = require("./database/userConfig");
+    const userConfig = configManager.getUserConfig(interaction.user.id);
+
+    const modal = new ModalBuilder()
+      .setCustomId("messages_modal")
+      .setTitle("Status Messages");
+
+    const text1Input = new TextInputBuilder()
+      .setCustomId("text1")
+      .setLabel("Text 1 (one per line)")
+      .setPlaceholder(
+        "Enter time format text (e.g., {NF3( 〈 {emoji:time} {hour:1} : {min:1} 〉)}"
+      )
+      .setStyle(TextInputStyle.Paragraph)
+      .setValue(userConfig.config?.["text-1"]?.join("\n") || "")
+      .setRequired(false);
+
+    const text2Input = new TextInputBuilder()
+      .setCustomId("text2")
+      .setLabel("Text 2 (one per line)")
+      .setPlaceholder("Enter status messages (e.g., {NF3(Your Status Here)})")
+      .setStyle(TextInputStyle.Paragraph)
+      .setValue(userConfig.config?.["text-2"]?.join("\n") || "")
+      .setRequired(false);
+
+    const text3Input = new TextInputBuilder()
+      .setCustomId("text3")
+      .setLabel("Text 3 (one per line)")
+      .setPlaceholder("Enter decorative text (e.g., ☆★✮⋆☆★✮⋆)")
+      .setStyle(TextInputStyle.Paragraph)
+      .setValue(userConfig.config?.["text-3"]?.join("\n") || "")
+      .setRequired(false);
+
+    const text1Row = new ActionRowBuilder().addComponents(text1Input);
+    const text2Row = new ActionRowBuilder().addComponents(text2Input);
+    const text3Row = new ActionRowBuilder().addComponents(text3Input);
+
+    modal.addComponents(text1Row, text2Row, text3Row);
+
+    await interaction.showModal(modal);
+  }
+
+  if (interaction.customId === "config_images") {
+    const configManager = require("./database/userConfig");
+    const userConfig = configManager.getUserConfig(interaction.user.id);
+
+    const modal = new ModalBuilder()
+      .setCustomId("images_modal")
+      .setTitle("Images");
+
+    const bigImgInput = new TextInputBuilder()
+      .setCustomId("bigimg")
+      .setLabel("Large Images (one URL per line)")
+      .setPlaceholder("Enter URLs for large images")
+      .setStyle(TextInputStyle.Paragraph)
+      .setValue(userConfig.config?.bigimg?.join("\n") || "")
+      .setRequired(false);
+
+    const smallImgInput = new TextInputBuilder()
+      .setCustomId("smallimg")
+      .setLabel("Small Images (one URL per line)")
+      .setPlaceholder("Enter URLs for small images")
+      .setStyle(TextInputStyle.Paragraph)
+      .setValue(userConfig.config?.smallimg?.join("\n") || "")
+      .setRequired(false);
+
+    const bigImgRow = new ActionRowBuilder().addComponents(bigImgInput);
+    const smallImgRow = new ActionRowBuilder().addComponents(smallImgInput);
+
+    modal.addComponents(bigImgRow, smallImgRow);
+
+    await interaction.showModal(modal);
+  }
+
+  if (interaction.customId === "config_buttons") {
+    const configManager = require("./database/userConfig");
+    const userConfig = configManager.getUserConfig(interaction.user.id);
+
+    const modal = new ModalBuilder()
+      .setCustomId("buttons_modal")
+      .setTitle("Buttons");
+
+    const button1NameInput = new TextInputBuilder()
+      .setCustomId("button1_name")
+      .setLabel("Button 1 Name")
+      .setPlaceholder("Enter name for the first button")
+      .setStyle(TextInputStyle.Short)
+      .setValue(userConfig.config?.["button-1"]?.[0]?.name || "")
+      .setRequired(false);
+
+    const button1UrlInput = new TextInputBuilder()
+      .setCustomId("button1_url")
+      .setLabel("Button 1 URL")
+      .setPlaceholder("Enter URL for the first button")
+      .setStyle(TextInputStyle.Short)
+      .setValue(userConfig.config?.["button-1"]?.[0]?.url || "")
+      .setRequired(false);
+
+    const button2NameInput = new TextInputBuilder()
+      .setCustomId("button2_name")
+      .setLabel("Button 2 Name")
+      .setPlaceholder("Enter name for the second button")
+      .setStyle(TextInputStyle.Short)
+      .setValue(userConfig.config?.["button-2"]?.[0]?.name || "")
+      .setRequired(false);
+
+    const button2UrlInput = new TextInputBuilder()
+      .setCustomId("button2_url")
+      .setLabel("Button 2 URL")
+      .setPlaceholder("Enter URL for the second button")
+      .setStyle(TextInputStyle.Short)
+      .setValue(userConfig.config?.["button-2"]?.[0]?.url || "")
+      .setRequired(false);
+
+    const button1NameRow = new ActionRowBuilder().addComponents(
+      button1NameInput
+    );
+    const button1UrlRow = new ActionRowBuilder().addComponents(button1UrlInput);
+    const button2NameRow = new ActionRowBuilder().addComponents(
+      button2NameInput
+    );
+    const button2UrlRow = new ActionRowBuilder().addComponents(button2UrlInput);
+
+    modal.addComponents(
+      button1NameRow,
+      button1UrlRow,
+      button2NameRow,
+      button2UrlRow
+    );
+
+    await interaction.showModal(modal);
+  }
+
+  if (interaction.customId === "save_config") {
+    const configManager = require("./database/userConfig");
+    const userConfig = configManager.getUserConfig(interaction.user.id);
+
+    // Create a temporary config object to store the current configuration
+    const tempConfig = {
+      setup: {
+        city: userConfig.setup?.city || "pattaya",
+        delay: userConfig.setup?.delay || 10,
+      },
+      config: {
+        options: {
+          "watch-url": userConfig.config?.options?.["watch-url"] || [],
+          timestamp: userConfig.config?.options?.timestamp || "{start}",
+        },
+        "text-1": userConfig.config?.["text-1"] || [],
+        "text-2": userConfig.config?.["text-2"] || [],
+        "text-3": userConfig.config?.["text-3"] || [],
+        bigimg: userConfig.config?.bigimg || [],
+        smallimg: userConfig.config?.smallimg || [],
+        "button-1": userConfig.config?.["button-1"] || [],
+        "button-2": userConfig.config?.["button-2"] || [],
+      },
+    };
+
+    // Save the configuration
+    const success = configManager.setUserConfig(
+      interaction.user.id,
+      tempConfig
+    );
+
+    if (success) {
+      const configEmbed = new EmbedBuilder()
+        .setColor(0xf1efef)
+        .setDescription(
+          "```Your streaming configuration has been saved successfully!```"
+        )
+        .addFields(
+          { name: "City", value: tempConfig.setup.city, inline: true },
+          { name: "Delay", value: `${tempConfig.setup.delay}s`, inline: true },
+          {
+            name: "Watch URLs",
+            value:
+              tempConfig.config.options["watch-url"].length > 0
+                ? tempConfig.config.options["watch-url"].join("\n")
+                : "None set",
+            inline: false,
+          },
+          {
+            name: "Status Messages",
+            value:
+              tempConfig.config["text-2"].length > 0
+                ? `${tempConfig.config["text-2"].length} messages set`
+                : "None set",
+            inline: true,
+          },
+          {
+            name: "Images",
+            value:
+              tempConfig.config.bigimg.length > 0
+                ? `${tempConfig.config.bigimg.length} images set`
+                : "None set",
+            inline: true,
+          }
+        );
+
+      await interaction.reply({
+        embeds: [configEmbed],
+        ephemeral: true,
+      });
+    } else {
+      await interaction.reply({
+        content: "❌ Failed to save configuration. Please try again.",
+        ephemeral: true,
+      });
+    }
+  }
 });
 
 client.on("interactionCreate", async (interaction) => {
@@ -959,6 +1445,254 @@ client.on("interactionCreate", async (interaction) => {
       });
     }
   }
+
+  if (interaction.customId === "basic_settings_modal") {
+    try {
+      await interaction.deferReply({ ephemeral: true });
+
+      const city = interaction.fields.getTextInputValue("city").trim();
+      const delay =
+        parseInt(interaction.fields.getTextInputValue("delay").trim()) || 10;
+
+      const configManager = require("./database/userConfig");
+      const userConfig = configManager.getUserConfig(interaction.user.id);
+
+      // Update the configuration
+      if (!userConfig.setup) userConfig.setup = {};
+      userConfig.setup.city = city;
+      userConfig.setup.delay = delay;
+
+      // Save the configuration
+      const success = configManager.setUserConfig(
+        interaction.user.id,
+        userConfig
+      );
+
+      if (success) {
+        await interaction.editReply({
+          content: "✅ Basic settings updated successfully!",
+        });
+      } else {
+        await interaction.editReply({
+          content: "❌ Failed to update basic settings. Please try again.",
+        });
+      }
+    } catch (error) {
+      console.error("Error updating basic settings:", error);
+      await interaction.editReply({
+        content: "❌ An error occurred while updating basic settings.",
+      });
+    }
+  }
+
+  if (interaction.customId === "urls_modal") {
+    try {
+      await interaction.deferReply({ ephemeral: true });
+
+      const urlsText = interaction.fields.getTextInputValue("urls").trim();
+      const urls = urlsText
+        .split("\n")
+        .map((url) => url.trim())
+        .filter((url) => url);
+
+      const configManager = require("./database/userConfig");
+      const userConfig = configManager.getUserConfig(interaction.user.id);
+
+      // Update the configuration
+      if (!userConfig.config) userConfig.config = {};
+      if (!userConfig.config.options) userConfig.config.options = {};
+      userConfig.config.options["watch-url"] = urls;
+
+      // Save the configuration
+      const success = configManager.setUserConfig(
+        interaction.user.id,
+        userConfig
+      );
+
+      if (success) {
+        await interaction.editReply({
+          content: `✅ Watch URLs updated successfully! ${urls.length} URL(s) set.`,
+        });
+      } else {
+        await interaction.editReply({
+          content: "❌ Failed to update watch URLs. Please try again.",
+        });
+      }
+    } catch (error) {
+      console.error("Error updating watch URLs:", error);
+      await interaction.editReply({
+        content: "❌ An error occurred while updating watch URLs.",
+      });
+    }
+  }
+
+  if (interaction.customId === "messages_modal") {
+    try {
+      await interaction.deferReply({ ephemeral: true });
+
+      const text1 = interaction.fields
+        .getTextInputValue("text1")
+        .trim()
+        .split("\n")
+        .filter((text) => text);
+      const text2 = interaction.fields
+        .getTextInputValue("text2")
+        .trim()
+        .split("\n")
+        .filter((text) => text);
+      const text3 = interaction.fields
+        .getTextInputValue("text3")
+        .trim()
+        .split("\n")
+        .filter((text) => text);
+
+      const configManager = require("./database/userConfig");
+      const userConfig = configManager.getUserConfig(interaction.user.id);
+
+      // Update the configuration
+      if (!userConfig.config) userConfig.config = {};
+      userConfig.config["text-1"] = text1;
+      userConfig.config["text-2"] = text2;
+      userConfig.config["text-3"] = text3;
+
+      // Save the configuration
+      const success = configManager.setUserConfig(
+        interaction.user.id,
+        userConfig
+      );
+
+      if (success) {
+        await interaction.editReply({
+          content: "✅ Status messages updated successfully!",
+        });
+      } else {
+        await interaction.editReply({
+          content: "❌ Failed to update status messages. Please try again.",
+        });
+      }
+    } catch (error) {
+      console.error("Error updating status messages:", error);
+      await interaction.editReply({
+        content: "❌ An error occurred while updating status messages.",
+      });
+    }
+  }
+
+  if (interaction.customId === "images_modal") {
+    try {
+      await interaction.deferReply({ ephemeral: true });
+
+      const bigimg = interaction.fields
+        .getTextInputValue("bigimg")
+        .trim()
+        .split("\n")
+        .filter((url) => url);
+      const smallimg = interaction.fields
+        .getTextInputValue("smallimg")
+        .trim()
+        .split("\n")
+        .filter((url) => url);
+
+      const configManager = require("./database/userConfig");
+      const userConfig = configManager.getUserConfig(interaction.user.id);
+
+      // Update the configuration
+      if (!userConfig.config) userConfig.config = {};
+      userConfig.config.bigimg = bigimg;
+      userConfig.config.smallimg = smallimg;
+
+      // Save the configuration
+      const success = configManager.setUserConfig(
+        interaction.user.id,
+        userConfig
+      );
+
+      if (success) {
+        await interaction.editReply({
+          content: `✅ Images updated successfully! ${bigimg.length} large image(s) and ${smallimg.length} small image(s) set.`,
+        });
+      } else {
+        await interaction.editReply({
+          content: "❌ Failed to update images. Please try again.",
+        });
+      }
+    } catch (error) {
+      console.error("Error updating images:", error);
+      await interaction.editReply({
+        content: "❌ An error occurred while updating images.",
+      });
+    }
+  }
+
+  if (interaction.customId === "buttons_modal") {
+    try {
+      await interaction.deferReply({ ephemeral: true });
+
+      const button1Name = interaction.fields
+        .getTextInputValue("button1_name")
+        .trim();
+      const button1Url = interaction.fields
+        .getTextInputValue("button1_url")
+        .trim();
+      const button2Name = interaction.fields
+        .getTextInputValue("button2_name")
+        .trim();
+      const button2Url = interaction.fields
+        .getTextInputValue("button2_url")
+        .trim();
+
+      const configManager = require("./database/userConfig");
+      const userConfig = configManager.getUserConfig(interaction.user.id);
+
+      // Update the configuration
+      if (!userConfig.config) userConfig.config = {};
+
+      // Button 1
+      if (button1Name && button1Url) {
+        userConfig.config["button-1"] = [
+          {
+            name: button1Name,
+            url: button1Url,
+          },
+        ];
+      } else {
+        userConfig.config["button-1"] = [];
+      }
+
+      // Button 2
+      if (button2Name && button2Url) {
+        userConfig.config["button-2"] = [
+          {
+            name: button2Name,
+            url: button2Url,
+          },
+        ];
+      } else {
+        userConfig.config["button-2"] = [];
+      }
+
+      // Save the configuration
+      const success = configManager.setUserConfig(
+        interaction.user.id,
+        userConfig
+      );
+
+      if (success) {
+        await interaction.editReply({
+          content: "✅ Buttons updated successfully!",
+        });
+      } else {
+        await interaction.editReply({
+          content: "❌ Failed to update buttons. Please try again.",
+        });
+      }
+    } catch (error) {
+      console.error("Error updating buttons:", error);
+      await interaction.editReply({
+        content: "❌ An error occurred while updating buttons.",
+      });
+    }
+  }
 });
 
 client.on("interactionCreate", async (interaction) => {
@@ -995,32 +1729,6 @@ client.on("interactionCreate", async (interaction) => {
 
 async function validateSelfbotToken(token) {
   return TokenValidator.validateToken(token);
-}
-
-// Register slash commands
-async function registerCommands() {
-  try {
-    const commands = [];
-    const commandFiles = fs
-      .readdirSync(commandsPath)
-      .filter((file) => file.endsWith(".js"));
-
-    for (const file of commandFiles) {
-      const command = require(path.join(commandsPath, file));
-      commands.push(command.data.toJSON());
-    }
-
-    const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
-    console.log("Started refreshing application (/) commands.");
-
-    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), {
-      body: commands,
-    });
-
-    console.log("Successfully reloaded application (/) commands.");
-  } catch (error) {
-    console.error(error);
-  }
 }
 
 client.login(process.env.TOKEN);

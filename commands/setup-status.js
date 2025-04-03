@@ -31,10 +31,6 @@ module.exports = {
         .setLabel("Settings")
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId("show_sample_config")
-        .setLabel("คอนฟิก ตัวอย่าง")
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
         .setLabel('Video')
         .setURL('https://youtu.be/ulUS2mXUqKQ')
         .setEmoji('<:youtube:1153998429274517524>')
