@@ -112,69 +112,6 @@ function createBanner(text, type = "info") {
   )}\n${color("└" + line + "┘")}\n`;
 }
 
-function createStatusBox(title, content, type = "info") {
-  const width = 60;
-  const line = "─".repeat(width - 2);
-
-  let titleColor, contentColor;
-  switch (type) {
-    case "success":
-      titleColor = chalk.green;
-      contentColor = chalk.white;
-      break;
-    case "error":
-      titleColor = chalk.red;
-      contentColor = chalk.white;
-      break;
-    case "warning":
-      titleColor = chalk.yellow;
-      contentColor = chalk.white;
-      break;
-    case "info":
-    default:
-      titleColor = chalk.cyan;
-      contentColor = chalk.white;
-  }
-
-  const titlePadding = Math.max(0, Math.floor((width - title.length - 3) / 2));
-  const titleRemaining = Math.max(0, width - title.length - titlePadding - 3);
-
-  const contentLines = content.split("\n");
-  let result = `${titleColor("┌" + line + "┐")}\n`;
-  result += `${titleColor("│")}${" ".repeat(titlePadding)} ${chalk.bold(
-    title
-  )} ${" ".repeat(titleRemaining)}${titleColor("│")}\n`;
-  result += `${titleColor("├" + line + "┤")}\n`;
-
-  for (const line of contentLines) {
-    const contentPadding = Math.max(
-      0,
-      Math.floor((width - line.length - 3) / 2)
-    );
-    const contentRemaining = Math.max(
-      0,
-      width - line.length - contentPadding - 3
-    );
-    result += `${titleColor("│")}${" ".repeat(contentPadding)} ${contentColor(
-      line
-    )} ${" ".repeat(contentRemaining)}${titleColor("│")}\n`;
-  }
-
-  result += `${titleColor("└" + line + "┘")}\n`;
-  return result;
-}
-
-function createProgressBar(current, total, width = 40) {
-  const percentage = Math.floor((current / total) * 100);
-  const filled = Math.floor((width * current) / total);
-  const empty = width - filled;
-
-  const bar = "█".repeat(filled) + "░".repeat(empty);
-  return `${chalk.cyan("[")}${chalk.green(bar)}${chalk.cyan("]")} ${chalk.white(
-    `${percentage}%`
-  )}`;
-}
-
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -192,7 +129,6 @@ const client = new Client({
 
 client.commands = new Collection();
 
-// Load commands into Collection
 for (const file of commandFiles) {
   const filePath = path.join(commandsPath, file);
   const command = require(filePath);
@@ -208,14 +144,7 @@ for (const file of commandFiles) {
 }
 
 client.once("ready", async () => {
-  console.log(createBanner("STREAMING STATUS BOT", "info"));
-  console.log(
-    createStatusBox(
-      "Bot Information",
-      `Logged in as ${chalk.bold(client.user.tag)}`,
-      "info"
-    )
-  );
+  console.log(chalk.white("Logged in as:") + ` ${client.user.tag}`);
 
   client.user.setPresence({
     activities: [
@@ -229,7 +158,6 @@ client.once("ready", async () => {
     afk: false,
   });
 
-  console.log(createBanner("RESTORING ACTIVE STREAMS", "info"));
   const activeUsers = activeStreamsManager.getActiveUsers();
   console.log(
     chalk.gray(`ℹ Found ${activeUsers.length} active user(s) to restore`)
@@ -265,16 +193,6 @@ client.once("ready", async () => {
       failCount++;
     }
   }
-
-  console.log(
-    createStatusBox(
-      "Stream Restoration Summary",
-      `✓ Successfully restored: ${chalk.green(
-        successCount
-      )}\n✗ Failed to restore: ${chalk.red(failCount)}`,
-      successCount > 0 ? "success" : "error"
-    )
-  );
 
   try {
     console.log(chalk.cyan("Started refreshing application (/) commands."));
@@ -623,6 +541,10 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (interaction.customId === "settings") {
+    const db = require("./database/db");
+    const userTokens = db.getUserTokens(interaction.user.id);
+    const hasTokens = userTokens && userTokens.length > 0;
+
     const settingsEmbed = new EmbedBuilder()
       .setColor(0xffffff)
       .setDescription("```Configure your status settings here```");
@@ -635,18 +557,40 @@ client.on("interactionCreate", async (interaction) => {
       new ButtonBuilder()
         .setCustomId("view_tokens")
         .setLabel("View My Tokens")
-        .setStyle(ButtonStyle.Primary),
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(!hasTokens),
       new ButtonBuilder()
         .setCustomId("remove_token")
         .setLabel("Remove Token")
         .setStyle(ButtonStyle.Danger)
+        .setDisabled(!hasTokens)
     );
 
-    await interaction.reply({
-      embeds: [settingsEmbed],
-      components: [settingsRow],
-      ephemeral: true,
-    });
+    // Only update if the message is already a settings panel, otherwise reply ephemeral
+    let isMainMenu = false;
+    if (interaction.isMessageComponent() && interaction.message && interaction.message.embeds && interaction.message.embeds.length > 0) {
+      const embed = interaction.message.embeds[0];
+      // Check for main menu by description or fields
+      if (
+        (embed.description && embed.description.includes("ระบบออนเม็ดม่วง")) ||
+        (embed.fields && embed.fields.some(f => f.name === "Streaming" && f.value.includes("Set your streaming status")))
+      ) {
+        isMainMenu = true;
+      }
+    }
+    if (interaction.isMessageComponent() && interaction.message && !isMainMenu) {
+      await interaction.update({
+        embeds: [settingsEmbed],
+        components: [settingsRow],
+        ephemeral: true,
+      });
+    } else {
+      await interaction.reply({
+        embeds: [settingsEmbed],
+        components: [settingsRow],
+        ephemeral: true,
+      });
+    }
   }
 
   if (interaction.customId === "add_token") {
@@ -1264,16 +1208,19 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     try {
-      await interaction.deferReply({ ephemeral: true });
+      // Show loading embed
+      const loadingEmbed = new EmbedBuilder()
+        .setColor(0xf1c40f)
+        .setDescription("```⏳ Validating and adding your token(s)...```\nThis may take a few seconds.");
+      await interaction.reply({
+        embeds: [loadingEmbed],
+        ephemeral: true,
+      });
       const db = require("./database/db");
 
       let validCount = 0;
       let invalidCount = 0;
       let duplicateCount = 0;
-
-      const resultsEmbed = new EmbedBuilder()
-        .setColor(0x3498db)
-        .setDescription(`Processing ${tokens.length} token(s)...`);
 
       const existingTokens = db.getUserTokens(interaction.user.id);
       const existingValues = existingTokens.map((token) => token.value);
@@ -1306,7 +1253,8 @@ client.on("interactionCreate", async (interaction) => {
         }
       }
 
-      resultsEmbed
+      const resultsEmbed = new EmbedBuilder()
+        .setColor(0x3498db)
         .setDescription(`Processed ${tokens.length} token(s)`)
         .addFields(
           {
@@ -1352,6 +1300,37 @@ client.on("interactionCreate", async (interaction) => {
         embeds: [resultsEmbed],
         ephemeral: true,
       });
+      setTimeout(async () => {
+        try {
+          const updatedTokens = db.getUserTokens(interaction.user.id);
+          const hasTokensNow = updatedTokens && updatedTokens.length > 0;
+          const settingsEmbed = new EmbedBuilder()
+            .setColor(0xffffff)
+            .setDescription("```Configure your status settings here```");
+          const settingsRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId("add_token")
+              .setLabel("Add Token")
+              .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+              .setCustomId("view_tokens")
+              .setLabel("View My Tokens")
+              .setStyle(ButtonStyle.Primary)
+              .setDisabled(!hasTokensNow),
+            new ButtonBuilder()
+              .setCustomId("remove_token")
+              .setLabel("Remove Token")
+              .setStyle(ButtonStyle.Danger)
+              .setDisabled(!hasTokensNow)
+          );
+          await interaction.editReply({
+            embeds: [settingsEmbed],
+            components: [settingsRow],
+            ephemeral: true,
+          });
+        } catch (e) {
+        }
+      }, 2000); 
     } catch (error) {
       console.error("Error in token validation:", error);
 

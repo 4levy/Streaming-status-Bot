@@ -39,7 +39,7 @@ module.exports = {
     );
 
     const setupEmbed = new EmbedBuilder()
-      .setColor(0xffffff)
+      .setColor(0xfffdfd)
       .setDescription("```ระบบออนเม็ดม่วง ( BETA )```")
       .addFields(
         {
@@ -54,7 +54,7 @@ module.exports = {
         }
       )
       .setImage(
-        "https://i.ibb.co/8Mhm24D/miyako1-1.gif"
+        "https://i.postimg.cc/8CjqZqzt/rgb-black.gif"
       )
       .setTimestamp();
 
